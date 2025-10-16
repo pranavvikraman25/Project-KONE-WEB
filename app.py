@@ -11,18 +11,24 @@ import subprocess, shlex
 st.set_page_config(page_title="CKPI Multi-KPI Analyzer", layout="wide")
 st.title("CKPI Multi-KPI Analyzer — Complete Dashboard for Multiple KPIs")
 
+# ---------------- Load Custom CSS (KONE Theme) ----------------
+def load_css(file_name):
+    with open(file_name) as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+load_css("assets/style.css")
+
 # ---------------- Developer Badge & Logo ----------------
 with st.sidebar:
     try:
         st.image("assets/logo.png", width=160)
     except Exception:
-        st.write("")  # logo optional
+        st.write("")
     st.markdown("### KONE — Maintenance Dashboard")
     st.caption("Developer: PRANAV VIKRAMAN S S")
     st.markdown("---")
 
 # ---------------- Thresholds (normalized keys) ----------------
-# Keys are stored normalized (lower, remove non-alnum)
 KPI_THRESHOLDS = {
     "doorfriction": (30.0, 50.0),
     "cumulativedoorspeederror": (0.05, 0.08),
@@ -50,7 +56,6 @@ def read_file(uploaded):
     return pd.read_csv(uploaded)
 
 def parse_dates(df, col):
-    # Parse mm/dd/yyyy properly (your file format)
     df[col] = pd.to_datetime(df[col], dayfirst=False, errors="coerce")
     return df
 
@@ -61,7 +66,7 @@ def detect_peaks_lows(values, low_thresh, high_thresh, std_factor=1.0):
     if n < 3 or np.isnan(arr).all():
         return peaks, lows
     mean, std = np.nanmean(arr), np.nanstd(arr)
-    upper_stat, lower_stat = mean + std_factor*std, mean - std_factor*std
+    upper_stat, lower_stat = mean + std_factor * std, mean - std_factor * std
     for i in range(1, n-1):
         a, b, c = arr[i-1], arr[i], arr[i+1]
         if np.isnan(b): continue
@@ -95,7 +100,6 @@ def df_to_excel_bytes(df_):
     out.seek(0)
     return out
 
-# Optional Ollama summarizer (local). If Ollama isn't installed or fails, returns None.
 def ollama_summarize(text, model="llama2"):
     try:
         cmd = f"ollama run {model} \"Summarize this maintenance report in 4 bullet points for a manager: {text}\""
@@ -122,21 +126,19 @@ if df.empty:
     st.error("Uploaded file is empty.")
     st.stop()
 
-# Ensure required columns (case-insensitive)
 cols_lower = {c.lower(): c for c in df.columns}
 required = ["ckpi_statistics_date","ave","ckpi","floor","eq"]
 for req in required:
     if req not in cols_lower:
-        st.error(f"Required column '{req}' not found in file. Found columns: {list(df.columns)}")
+        st.error(f"Required column '{req}' not found in file.")
         st.stop()
 
 date_col, ave_col, ckpi_col, floor_col, eq_col = [cols_lower[c] for c in required]
 df = parse_dates(df, date_col)
 if df[date_col].isna().all():
-    st.error("Could not parse any dates. Please ensure the file uses mm/dd/yyyy or a parseable date format.")
+    st.error("Could not parse any dates. Ensure format mm/dd/yyyy.")
     st.stop()
 
-# Add normalized KPI column to match thresholds (handles spacing/case)
 df["_ckpi_norm"] = df[ckpi_col].astype(str).apply(normalize_text)
 
 # ---------------- Sidebar Filters ----------------
@@ -148,15 +150,10 @@ selected_eq = st.sidebar.multiselect("Select EQ(s)", eq_choices, default=eq_choi
 floor_choices = sorted(df[floor_col].dropna().unique())
 selected_floors = st.sidebar.multiselect("Select Floor(s)", floor_choices, default=floor_choices[:2] if floor_choices else [])
 
-# KPI options are the intersection between thresholds we know and file values (presented nicely)
-# Build mapping from normalized->display
 file_kpis = df[["_ckpi_norm", ckpi_col]].drop_duplicates().set_index("_ckpi_norm")[ckpi_col].to_dict()
 available_kpis = sorted(list(set(list(KPI_THRESHOLDS.keys()) + list(file_kpis.keys()))))
-# Present display names: prefer original file name if available
 kpi_display = [file_kpis[k] if k in file_kpis else k for k in available_kpis]
 selected_kpis_display = st.sidebar.multiselect("Select KPI(s)", kpi_display, default=kpi_display[:6] if kpi_display else [])
-
-# convert selected display names back to normalized keys
 selected_kpis = [normalize_text(s) for s in selected_kpis_display]
 
 st.sidebar.markdown("### Date Range")
@@ -190,48 +187,30 @@ if df_filtered.empty:
     st.warning("No data after applying filters.")
     st.stop()
 
-# Convert ave to numeric
 df_filtered[ave_col] = pd.to_numeric(df_filtered[ave_col], errors="coerce")
 
-# ---------------- KPI Grid (2x3) ----------------
+# ---------------- KPI Graphs (Single Column Layout) ----------------
 st.markdown("### KPI Trends")
+
 kpi_summary = []
 
-# Determine layout columns (2 per row)
-cols = st.columns(2)
-kpi_figs = []  # store (kpi_norm, fig, summary_entries)
-
-# Up to six KPIs shown in a 2x3 grid; but if user selected more, paginate (simple)
-show_kpis = selected_kpis
-if not show_kpis:
-    st.info("Select at least one KPI in the sidebar.")
-    st.stop()
-
-# Create each KPI figure and place in grid
-for idx, kpi_norm in enumerate(show_kpis):
-    # use actual display name if present
+for kpi_norm in selected_kpis:
     kpi_display_name = file_kpis.get(kpi_norm, kpi_norm)
     df_kpi = df_filtered[df_filtered["_ckpi_norm"] == kpi_norm]
     if df_kpi.empty:
-        # show a small placeholder in the grid spot
-        with cols[idx % 2]:
-            st.info(f"No data for KPI: {kpi_display_name}")
+        st.info(f"No data for KPI: {kpi_display_name}")
         continue
 
-    # Build figure
+    st.subheader(f"KPI: {kpi_display_name}")
     fig = go.Figure()
     floors = sorted(df_kpi[floor_col].dropna().unique())
     for i, floor in enumerate(floors):
         df_floor = df_kpi[df_kpi[floor_col] == floor].sort_values(date_col)
-        if df_floor.empty:
-            continue
-
+        if df_floor.empty: continue
         color = color_cycle(i)
-        # thresholds
         thresh = KPI_THRESHOLDS.get(kpi_norm, (None, None))
         low_thresh, high_thresh = thresh
 
-        # status colors by point
         status_colors = [
             "#2ca02c" if point_status(v, thresh) == "ok" else "#ffcc00"
             for v in df_floor[ave_col]
@@ -248,7 +227,6 @@ for idx, kpi_norm in enumerate(show_kpis):
         ))
 
         peaks, lows = detect_peaks_lows(df_floor[ave_col].values, low_thresh, high_thresh, std_factor)
-
         if peaks:
             fig.add_trace(go.Scatter(
                 x=df_floor[date_col].values[peaks],
@@ -268,7 +246,6 @@ for idx, kpi_norm in enumerate(show_kpis):
 
         kpi_summary.append({
             "kpi": kpi_display_name,
-            "kpi_norm": kpi_norm,
             "floor": floor,
             "peaks": len(peaks),
             "lows": len(lows),
@@ -276,41 +253,37 @@ for idx, kpi_norm in enumerate(show_kpis):
         })
 
     fig.update_layout(
-        title_text=f"{kpi_display_name}",
         xaxis_title="Date",
         yaxis_title="ave",
-        height=420,
+        height=450,
         hovermode="closest",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=40, b=30)
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
+    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("---")
 
-    # place figure in correct column
-    with cols[idx % 2]:
-        st.plotly_chart(fig, use_container_width=True)
-
-# ---------------- Legend & small explanatory panel ----------------
+# ---------------- Legend ----------------
 st.markdown("**Legend:** 🟢 Within threshold (OK) &nbsp;&nbsp; 🟡 Outside threshold (Corrective) &nbsp;&nbsp; 🔺 Peak &nbsp;&nbsp; 🔻 Low")
 st.markdown("---")
 
 # ---------------- Actionable Insights ----------------
 st.subheader("⚡ Actionable Insights Report ⚡")
-# mapping remedies by KPI (tailor these)
+
 REMEDY_BY_KPI = {
-    "doorfriction": "Lubricate guide rails; inspect rollers; follow solution 1",
-    "cumulativedoorspeederror": "Check door motor encoder and speed calibration; follow solution 2",
-    "lockhookclosingtime": "Inspect lock hook mechanism for obstructions; check wiring",
-    "lockhooktime": "Verify actuator response and sensor timing",
-    "maximumforceduringcompress": "Check coupler alignment and compress settings",
+    "doorfriction": "Lubricate guide rails; inspect rollers (Solution 1)",
+    "cumulativedoorspeederror": "Check door motor encoder calibration (Solution 2)",
+    "lockhookclosingtime": "Inspect lock hook mechanism and wiring",
+    "lockhooktime": "Verify actuator response timing",
+    "maximumforceduringcompress": "Check coupler alignment settings",
     "landingdoorlockrollerclearance": "Measure roller clearance; replace worn rollers"
 }
+
 report_rows = []
 for rec in kpi_summary:
     if rec['rows'] == 0:
         continue
-    # action threshold (20% of points as before)
     if rec['peaks'] + rec['lows'] > rec['rows'] * 0.2:
-        remedy = REMEDY_BY_KPI.get(rec['kpi_norm'], "Follow standard inspection checklist")
+        remedy = REMEDY_BY_KPI.get(normalize_text(rec['kpi']), "Follow standard inspection checklist")
         report_rows.append({
             "KPI": rec['kpi'],
             "Floor": rec['floor'],
@@ -329,20 +302,15 @@ if not report_df.empty:
         data=df_to_excel_bytes(report_df),
         file_name="kpi_actionable_report.xlsx"
     )
-
-    # Optional AI summary (attempt Ollama; gracefully fallback)
-    try:
-        st.markdown("### 🧠 AI Summary (local Ollama)")
-        summary_text = ollama_summarize(report_df.to_csv(index=False))
-        if summary_text:
-            st.write(summary_text)
-        else:
-            st.write("Ollama not available or returned no summary. (Optional) Install Ollama and a local model to enable.")
-    except Exception:
-        st.write("Ollama summary skipped (not available).")
+    st.markdown("### 🧠 AI Summary (via Ollama)")
+    summary_text = ollama_summarize(report_df.to_csv(index=False))
+    if summary_text:
+        st.write(summary_text)
+    else:
+        st.info("Ollama not available or returned no summary. Install Ollama for local AI insights.")
 else:
     st.info("No action needed for selected filters.")
 
 # ---------------- Footer ----------------
 st.markdown("---")
-st.caption("Tip: use the sidebar filters (EQ, Floor, KPI, Date) to narrow results. Adjust sensitivity to tune peak/low detection.")
+st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
