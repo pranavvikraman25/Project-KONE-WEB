@@ -25,7 +25,7 @@ with st.sidebar:
     except Exception:
         st.write("")
     st.markdown("### KONE — Maintenance Dashboard")
-    st.caption("Developer: PRANAV VIKRAMAN S S")
+    
     st.markdown("---")
 
 # ---------------- Thresholds (normalized keys) ----------------
@@ -322,5 +322,6 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
