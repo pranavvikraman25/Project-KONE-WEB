@@ -9,7 +9,7 @@ import subprocess, shlex
 
 # ---------------- Page config ----------------
 st.set_page_config(page_title="CKPI Multi-KPI Analyzer", layout="wide")
-st.title("CKPI Multi-KPI Analyzer — Complete Dashboard for Multiple KPIs")
+st.title("Make Trend Analysis for Different Equipments")
 
 # ---------------- Load Custom CSS (KONE Theme) ----------------
 def load_css(file_name):
@@ -322,4 +322,5 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
