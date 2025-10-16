@@ -1,0 +1,348 @@
+# app.py
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from io import BytesIO
+from datetime import date, timedelta
+import subprocess, shlex
+
+# ---------------- Page config ----------------
+st.set_page_config(page_title="CKPI Multi-KPI Analyzer", layout="wide")
+st.title("CKPI Multi-KPI Analyzer — Complete Dashboard for Multiple KPIs")
+
+# ---------------- Developer Badge & Logo ----------------
+with st.sidebar:
+    try:
+        st.image("assets/logo.png", width=160)
+    except Exception:
+        st.write("")  # logo optional
+    st.markdown("### KONE — Maintenance Dashboard")
+    st.caption("Developer: PRANAV VIKRAMAN S S")
+    st.markdown("---")
+
+# ---------------- Thresholds (normalized keys) ----------------
+# Keys are stored normalized (lower, remove non-alnum)
+KPI_THRESHOLDS = {
+    "doorfriction": (30.0, 50.0),
+    "cumulativedoorspeederror": (0.05, 0.08),
+    "lockhookclosingtime": (0.2, 0.6),
+    "lockhooktime": (0.3, None),
+    "maximumforceduringcompress": (5.0, 28.0),
+    "landingdoorlockrollerclearance": (None, 0.029)
+}
+
+# ---------------- Helpers ----------------
+def normalize_text(s: str):
+    if s is None: return ""
+    return "".join(ch for ch in str(s).lower() if ch.isalnum())
+
+def read_file(uploaded):
+    name = uploaded.name.lower()
+    if name.endswith(".xlsx"):
+        return pd.read_excel(uploaded, engine="openpyxl")
+    if name.endswith(".xls"):
+        return pd.read_excel(uploaded, engine="xlrd")
+    if name.endswith(".csv"):
+        return pd.read_csv(uploaded)
+    if name.endswith(".json"):
+        return pd.read_json(uploaded)
+    return pd.read_csv(uploaded)
+
+def parse_dates(df, col):
+    # Parse mm/dd/yyyy properly (your file format)
+    df[col] = pd.to_datetime(df[col], dayfirst=False, errors="coerce")
+    return df
+
+def detect_peaks_lows(values, low_thresh, high_thresh, std_factor=1.0):
+    arr = np.asarray(values, dtype=float)
+    n = len(arr)
+    peaks, lows = [], []
+    if n < 3 or np.isnan(arr).all():
+        return peaks, lows
+    mean, std = np.nanmean(arr), np.nanstd(arr)
+    upper_stat, lower_stat = mean + std_factor*std, mean - std_factor*std
+    for i in range(1, n-1):
+        a, b, c = arr[i-1], arr[i], arr[i+1]
+        if np.isnan(b): continue
+        if not np.isnan(a) and not np.isnan(c):
+            if b > a and b > c and ((high_thresh is not None and b > high_thresh) or b > upper_stat):
+                peaks.append(i)
+            if b < a and b < c and ((low_thresh is not None and b < low_thresh) or b < lower_stat):
+                lows.append(i)
+    return peaks, lows
+
+def point_status(value, thresh):
+    if value is None or (isinstance(value, float) and np.isnan(value)):
+        return "nodata"
+    low, high = thresh
+    if low is not None and high is not None:
+        return "ok" if low <= value <= high else "corrective"
+    if low is None and high is not None:
+        return "ok" if value <= high else "corrective"
+    if low is not None and high is None:
+        return "ok" if value >= low else "corrective"
+    return "corrective"
+
+def color_cycle(i):
+    palette = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f"]
+    return palette[i % len(palette)]
+
+def df_to_excel_bytes(df_):
+    out = BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as writer:
+        df_.to_excel(writer, index=False, sheet_name="Actionable_Report")
+    out.seek(0)
+    return out
+
+# Optional Ollama summarizer (local). If Ollama isn't installed or fails, returns None.
+def ollama_summarize(text, model="llama2"):
+    try:
+        cmd = f"ollama run {model} \"Summarize this maintenance report in 4 bullet points for a manager: {text}\""
+        proc = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=60)
+        if proc.returncode == 0:
+            return proc.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+# ---------------- Upload ----------------
+uploaded = st.file_uploader("Upload KPI file (xlsx/xls/csv/json)", type=["xlsx","xls","csv","json"])
+if not uploaded:
+    st.info("Upload a KPI file to begin. Required columns: eq, ckpi, ckpi_statistics_date, floor, ave")
+    st.stop()
+
+try:
+    df = read_file(uploaded)
+except Exception as e:
+    st.error(f"Could not read file: {e}")
+    st.stop()
+
+if df.empty:
+    st.error("Uploaded file is empty.")
+    st.stop()
+
+# Ensure required columns (case-insensitive)
+cols_lower = {c.lower(): c for c in df.columns}
+required = ["ckpi_statistics_date","ave","ckpi","floor","eq"]
+for req in required:
+    if req not in cols_lower:
+        st.error(f"Required column '{req}' not found in file. Found columns: {list(df.columns)}")
+        st.stop()
+
+date_col, ave_col, ckpi_col, floor_col, eq_col = [cols_lower[c] for c in required]
+df = parse_dates(df, date_col)
+if df[date_col].isna().all():
+    st.error("Could not parse any dates. Please ensure the file uses mm/dd/yyyy or a parseable date format.")
+    st.stop()
+
+# Add normalized KPI column to match thresholds (handles spacing/case)
+df["_ckpi_norm"] = df[ckpi_col].astype(str).apply(normalize_text)
+
+# ---------------- Sidebar Filters ----------------
+st.sidebar.header("Global Filters")
+
+eq_choices = sorted(df[eq_col].dropna().unique())
+selected_eq = st.sidebar.multiselect("Select EQ(s)", eq_choices, default=eq_choices[:2] if eq_choices else [])
+
+floor_choices = sorted(df[floor_col].dropna().unique())
+selected_floors = st.sidebar.multiselect("Select Floor(s)", floor_choices, default=floor_choices[:2] if floor_choices else [])
+
+# KPI options are the intersection between thresholds we know and file values (presented nicely)
+# Build mapping from normalized->display
+file_kpis = df[["_ckpi_norm", ckpi_col]].drop_duplicates().set_index("_ckpi_norm")[ckpi_col].to_dict()
+available_kpis = sorted(list(set(list(KPI_THRESHOLDS.keys()) + list(file_kpis.keys()))))
+# Present display names: prefer original file name if available
+kpi_display = [file_kpis[k] if k in file_kpis else k for k in available_kpis]
+selected_kpis_display = st.sidebar.multiselect("Select KPI(s)", kpi_display, default=kpi_display[:6] if kpi_display else [])
+
+# convert selected display names back to normalized keys
+selected_kpis = [normalize_text(s) for s in selected_kpis_display]
+
+st.sidebar.markdown("### Date Range")
+preset_range = st.sidebar.selectbox("Quick Select", ["Custom", "Past Week", "Past Month", "Past 3 Months", "Past 6 Months", "Past Year"])
+today = date.today()
+if preset_range == "Custom":
+    start_date, end_date = st.sidebar.date_input("Select Date Range", [df[date_col].min().date(), df[date_col].max().date()])
+elif preset_range == "Past Week":
+    start_date, end_date = today - timedelta(days=7), today
+elif preset_range == "Past Month":
+    start_date, end_date = today - timedelta(days=30), today
+elif preset_range == "Past 3 Months":
+    start_date, end_date = today - timedelta(days=90), today
+elif preset_range == "Past 6 Months":
+    start_date, end_date = today - timedelta(days=180), today
+else:
+    start_date, end_date = today - timedelta(days=365), today
+
+std_factor = st.sidebar.slider("Peak/Low Sensitivity", 0.5, 3.0, 1.0, 0.1)
+
+# ---------------- Apply Filters ----------------
+mask = (
+    df[eq_col].isin(selected_eq) &
+    df[floor_col].isin(selected_floors) &
+    df["_ckpi_norm"].isin(selected_kpis) &
+    (df[date_col].dt.date >= start_date) & (df[date_col].dt.date <= end_date)
+)
+df_filtered = df[mask].copy()
+
+if df_filtered.empty:
+    st.warning("No data after applying filters.")
+    st.stop()
+
+# Convert ave to numeric
+df_filtered[ave_col] = pd.to_numeric(df_filtered[ave_col], errors="coerce")
+
+# ---------------- KPI Grid (2x3) ----------------
+st.markdown("### KPI Trends")
+kpi_summary = []
+
+# Determine layout columns (2 per row)
+cols = st.columns(2)
+kpi_figs = []  # store (kpi_norm, fig, summary_entries)
+
+# Up to six KPIs shown in a 2x3 grid; but if user selected more, paginate (simple)
+show_kpis = selected_kpis
+if not show_kpis:
+    st.info("Select at least one KPI in the sidebar.")
+    st.stop()
+
+# Create each KPI figure and place in grid
+for idx, kpi_norm in enumerate(show_kpis):
+    # use actual display name if present
+    kpi_display_name = file_kpis.get(kpi_norm, kpi_norm)
+    df_kpi = df_filtered[df_filtered["_ckpi_norm"] == kpi_norm]
+    if df_kpi.empty:
+        # show a small placeholder in the grid spot
+        with cols[idx % 2]:
+            st.info(f"No data for KPI: {kpi_display_name}")
+        continue
+
+    # Build figure
+    fig = go.Figure()
+    floors = sorted(df_kpi[floor_col].dropna().unique())
+    for i, floor in enumerate(floors):
+        df_floor = df_kpi[df_kpi[floor_col] == floor].sort_values(date_col)
+        if df_floor.empty:
+            continue
+
+        color = color_cycle(i)
+        # thresholds
+        thresh = KPI_THRESHOLDS.get(kpi_norm, (None, None))
+        low_thresh, high_thresh = thresh
+
+        # status colors by point
+        status_colors = [
+            "#2ca02c" if point_status(v, thresh) == "ok" else "#ffcc00"
+            for v in df_floor[ave_col]
+        ]
+
+        fig.add_trace(go.Scatter(
+            x=df_floor[date_col],
+            y=df_floor[ave_col],
+            mode="lines+markers",
+            name=f"Floor {floor}",
+            line=dict(color=color, width=2),
+            marker=dict(size=8, color=status_colors, line=dict(color="#000", width=1)),
+            hovertemplate="Date: %{x|%m/%d/%Y}<br>Floor: "+str(floor)+"<br>ave: %{y:.2f}<extra></extra>"
+        ))
+
+        peaks, lows = detect_peaks_lows(df_floor[ave_col].values, low_thresh, high_thresh, std_factor)
+
+        if peaks:
+            fig.add_trace(go.Scatter(
+                x=df_floor[date_col].values[peaks],
+                y=df_floor[ave_col].values[peaks],
+                mode="markers",
+                marker=dict(symbol="triangle-up", color="red", size=11),
+                name=f"Peaks (Floor {floor})"
+            ))
+        if lows:
+            fig.add_trace(go.Scatter(
+                x=df_floor[date_col].values[lows],
+                y=df_floor[ave_col].values[lows],
+                mode="markers",
+                marker=dict(symbol="triangle-down", color="blue", size=11),
+                name=f"Lows (Floor {floor})"
+            ))
+
+        kpi_summary.append({
+            "kpi": kpi_display_name,
+            "kpi_norm": kpi_norm,
+            "floor": floor,
+            "peaks": len(peaks),
+            "lows": len(lows),
+            "rows": len(df_floor)
+        })
+
+    fig.update_layout(
+        title_text=f"{kpi_display_name}",
+        xaxis_title="Date",
+        yaxis_title="ave",
+        height=420,
+        hovermode="closest",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=40, b=30)
+    )
+
+    # place figure in correct column
+    with cols[idx % 2]:
+        st.plotly_chart(fig, use_container_width=True)
+
+# ---------------- Legend & small explanatory panel ----------------
+st.markdown("**Legend:** 🟢 Within threshold (OK) &nbsp;&nbsp; 🟡 Outside threshold (Corrective) &nbsp;&nbsp; 🔺 Peak &nbsp;&nbsp; 🔻 Low")
+st.markdown("---")
+
+# ---------------- Actionable Insights ----------------
+st.subheader("⚡ Actionable Insights Report ⚡")
+# mapping remedies by KPI (tailor these)
+REMEDY_BY_KPI = {
+    "doorfriction": "Lubricate guide rails; inspect rollers; follow solution 1",
+    "cumulativedoorspeederror": "Check door motor encoder and speed calibration; follow solution 2",
+    "lockhookclosingtime": "Inspect lock hook mechanism for obstructions; check wiring",
+    "lockhooktime": "Verify actuator response and sensor timing",
+    "maximumforceduringcompress": "Check coupler alignment and compress settings",
+    "landingdoorlockrollerclearance": "Measure roller clearance; replace worn rollers"
+}
+report_rows = []
+for rec in kpi_summary:
+    if rec['rows'] == 0:
+        continue
+    # action threshold (20% of points as before)
+    if rec['peaks'] + rec['lows'] > rec['rows'] * 0.2:
+        remedy = REMEDY_BY_KPI.get(rec['kpi_norm'], "Follow standard inspection checklist")
+        report_rows.append({
+            "KPI": rec['kpi'],
+            "Floor": rec['floor'],
+            "Rows": rec['rows'],
+            "Peaks": rec['peaks'],
+            "Lows": rec['lows'],
+            "Action Needed": "⚠️ High uncertainty → Technician check",
+            "Remedy / Reason": remedy
+        })
+
+report_df = pd.DataFrame(report_rows)
+if not report_df.empty:
+    st.dataframe(report_df)
+    st.download_button(
+        "Download Actionable Report (Excel)",
+        data=df_to_excel_bytes(report_df),
+        file_name="kpi_actionable_report.xlsx"
+    )
+
+    # Optional AI summary (attempt Ollama; gracefully fallback)
+    try:
+        st.markdown("### 🧠 AI Summary (local Ollama)")
+        summary_text = ollama_summarize(report_df.to_csv(index=False))
+        if summary_text:
+            st.write(summary_text)
+        else:
+            st.write("Ollama not available or returned no summary. (Optional) Install Ollama and a local model to enable.")
+    except Exception:
+        st.write("Ollama summary skipped (not available).")
+else:
+    st.info("No action needed for selected filters.")
+
+# ---------------- Footer ----------------
+st.markdown("---")
+st.caption("Tip: use the sidebar filters (EQ, Floor, KPI, Date) to narrow results. Adjust sensitivity to tune peak/low detection.")
