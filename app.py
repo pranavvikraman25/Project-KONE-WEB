@@ -257,8 +257,16 @@ for kpi_norm in selected_kpis:
         yaxis_title="ave",
         height=450,
         hovermode="closest",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis=dict(
+            tickformat="%b %d, %Y",  # <-- show only date (e.g., Oct 2, 2025)
+            showgrid=True,
+            tickangle=0,
+            tickmode="auto",
+            nticks=len(df_floor[date_col].unique())  # keep natural spacing
+        )
     )
+
     st.plotly_chart(fig, use_container_width=True)
     st.markdown("---")
 
@@ -314,3 +322,4 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
