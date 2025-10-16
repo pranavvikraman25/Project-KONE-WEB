@@ -100,7 +100,7 @@ def df_to_excel_bytes(df_):
     out.seek(0)
     return out
 
-def ollama_summarize(text, model="llama2"):
+def ollama_summarize(text, model="llama3"):
     try:
         cmd = f"ollama run {model} \"Summarize this maintenance report in 4 bullet points for a manager: {text}\""
         proc = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=60)
@@ -322,6 +322,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
