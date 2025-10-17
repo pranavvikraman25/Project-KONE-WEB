@@ -275,7 +275,7 @@ for kpi_norm in selected_kpis:
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         xaxis=dict(
             tickformat="%b %d, %Y",  # e.g., Jul 17, 2025
-            tickangle=45,            # slanted date labels
+            tickangle=-60,            # slanted date labels
             tickmode="array",
             tickvals=[d for i, d in enumerate(unique_dates) if i % tickstep == 0],
             ticktext=[d.strftime("%b %d, %Y") for i, d in enumerate(unique_dates) if i % tickstep == 0],
@@ -341,6 +341,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
