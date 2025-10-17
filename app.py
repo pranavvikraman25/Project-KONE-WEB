@@ -252,23 +252,39 @@ for kpi_norm in selected_kpis:
             "rows": len(df_floor)
         })
 
+    # --- Dynamically adjust date tick density ---
+    unique_dates = sorted(df_floor[date_col].dt.date.unique())
+    num_dates = len(unique_dates)
+    
+    # Determine tick spacing
+    if num_dates <= 15:
+        tickstep = 1        # show every date
+    elif num_dates <= 40:
+        tickstep = 2        # show every 2nd date
+    elif num_dates <= 100:
+        tickstep = 4        # show every 4th date
+    else:
+        tickstep = max(1, num_dates // 50)  # keep at least ~50 visible ticks for large datasets
+    
+    # --- Update layout ---
     fig.update_layout(
         xaxis_title="Date",
         yaxis_title="ave",
-        height=450,
+        height=500,
         hovermode="closest",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         xaxis=dict(
-            tickformat="%b %d, %Y",  # e.g. Jul 10, 2025
+            tickformat="%b %d, %Y",  # e.g., Jul 17, 2025
+            tickangle=45,            # slanted date labels
+            tickmode="array",
+            tickvals=[d for i, d in enumerate(unique_dates) if i % tickstep == 0],
+            ticktext=[d.strftime("%b %d, %Y") for i, d in enumerate(unique_dates) if i % tickstep == 0],
             showgrid=True,
-            tickangle=45,            # ← Rotate the labels 45° for better readability
-            tickmode="auto",
             tickfont=dict(size=10),
-            tickvals=df_floor[date_col].unique(),
-            ticktext=[d.strftime("%b %d, %Y") for d in df_floor[date_col].unique()]
-
+            showticklabels=True
         )
     )
+
 
     st.plotly_chart(fig, use_container_width=True)
     st.markdown("---")
@@ -325,6 +341,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
