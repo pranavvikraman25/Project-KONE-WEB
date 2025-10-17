@@ -278,7 +278,7 @@ for kpi_norm in selected_kpis:
             tickvals=tickvals,
             ticktext=ticktext,
             showgrid=True,
-            tickangle=45,  # slanted but clean
+            tickangle=-60,  # slanted but clean
             tickfont=dict(size=9),
             ticklabelstep=1,  # show all dates (no skipping)
             automargin=True,
@@ -354,6 +354,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
