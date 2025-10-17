@@ -56,8 +56,36 @@ def read_file(uploaded):
     return pd.read_csv(uploaded)
 
 def parse_dates(df, col):
-    df[col] = pd.to_datetime(df[col], dayfirst=False, errors="coerce")
+    """
+    Parse dates smartly: detect mm/dd/yyyy, dd/mm/yyyy, or yyyy/mm/dd automatically.
+    Always display later in dd/mm/yyyy format.
+    """
+    sample = df[col].dropna().astype(str).iloc[0]
+    # Replace common separators
+    sample = sample.replace("-", "/").strip()
+
+    try:
+        parts = sample.split("/")
+        if len(parts) == 3:
+            # detect pattern
+            first, middle, last = [int(p) for p in parts]
+            # If first > 12 => it's day first (dd/mm/yyyy)
+            if first > 12:
+                df[col] = pd.to_datetime(df[col], dayfirst=True, errors="coerce")
+            # If middle > 12 => it's year/month/day
+            elif middle > 12:
+                df[col] = pd.to_datetime(df[col], format="%Y/%m/%d", errors="coerce")
+            else:
+                # Default American mm/dd/yyyy
+                df[col] = pd.to_datetime(df[col], dayfirst=False, errors="coerce")
+        else:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+    except Exception:
+        # fallback
+        df[col] = pd.to_datetime(df[col], errors="coerce")
+
     return df
+
 
 def detect_peaks_lows(values, low_thresh, high_thresh, std_factor=1.0):
     arr = np.asarray(values, dtype=float)
@@ -160,7 +188,14 @@ st.sidebar.markdown("### Date Range")
 preset_range = st.sidebar.selectbox("Quick Select", ["Custom", "Past Week", "Past Month", "Past 3 Months", "Past 6 Months", "Past Year"])
 today = date.today()
 if preset_range == "Custom":
-    start_date, end_date = st.sidebar.date_input("Select Date Range", [df[date_col].min().date(), df[date_col].max().date()])
+    min_d, max_d = df[date_col].min().date(), df[date_col].max().date()
+    st.sidebar.write(f"📅 Date range available: {min_d.strftime('%d/%m/%Y')} → {max_d.strftime('%d/%m/%Y')}")
+    start_date, end_date = st.sidebar.date_input(
+        "Select Date Range (dd/mm/yyyy)", 
+        [min_d, max_d],
+        format="DD/MM/YYYY"
+    )
+
 elif preset_range == "Past Week":
     start_date, end_date = today - timedelta(days=7), today
 elif preset_range == "Past Month":
@@ -223,7 +258,8 @@ for kpi_norm in selected_kpis:
             name=f"Floor {floor}",
             line=dict(color=color, width=2),
             marker=dict(size=8, color=status_colors, line=dict(color="#000", width=1)),
-            hovertemplate="Date: %{x|%m/%d/%Y}<br>Floor: "+str(floor)+"<br>ave: %{y:.2f}<extra></extra>"
+            hovertemplate="Date: %{x|%d/%m/%Y}<br>Floor: "+str(floor)+"<br>ave: %{y:.2f}<extra></extra>"
+
         ))
 
         peaks, lows = detect_peaks_lows(df_floor[ave_col].values, low_thresh, high_thresh, std_factor)
@@ -355,6 +391,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
