@@ -336,14 +336,19 @@ for kpi_norm in selected_kpis:
             "rows": len(df_floor)
         })
 
-    unique_dates = sorted(df_floor[date_col].dt.date.unique())
-    num_dates = len(unique_dates)
+    # --- Generate evenly spaced date ticks ---
+    tickvals = pd.date_range(
+        start=df_floor[date_col].min(),
+        end=df_floor[date_col].max(),
+        freq="7D"  # every 7 days; can change to '1D' for all days
+    )
+    ticktext = [d.strftime("%d-%b") for d in tickvals]  # correct, no comma!
     
     fig.update_layout(
         xaxis_title="Date",
         yaxis_title="ave",
         height=500,
-        hovermode="closest",  # simple hover, no unified box
+        hovermode="closest",
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -353,19 +358,17 @@ for kpi_norm in selected_kpis:
         ),
         xaxis=dict(
             tickmode="array",
-            tickvals = pd.date_range(df_floor[date_col].min(), df_floor[date_col].max(), freq='7D'),  # show every 7th day
-            ticktext = [d.strftime("%d-%b") for d in tickvals]
-            tickangle=-60,                # tilt labels like CloudView
+            tickvals=tickvals,
+            ticktext=ticktext,
+            tickangle=-60,
             tickfont=dict(size=8, color="#444"),
             showgrid=True,
             gridcolor="#E0E0E0",
             zeroline=False,
             fixedrange=False,
-            ticklabeloverflow="allow",    # prevent cutting off long labels
-            ticklabelstep=1,              # show every tick label
-            tickformat="%d-%b",
+            ticklabeloverflow="allow",
             automargin=True,
-            rangeslider=dict(visible=False),  # ❌ remove duplicate mini chart
+            rangeslider=dict(visible=False),  # no duplicate mini chart
             rangeselector=dict(
                 buttons=list([
                     dict(count=7, label="1W", step="day", stepmode="backward"),
@@ -382,6 +385,7 @@ for kpi_norm in selected_kpis:
         plot_bgcolor="white",
         paper_bgcolor="white"
     )
+
 
 
     st.plotly_chart(fig, use_container_width=True)
@@ -439,4 +443,5 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
