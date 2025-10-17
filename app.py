@@ -252,19 +252,20 @@ for kpi_norm in selected_kpis:
             "rows": len(df_floor)
         })
 
-       # --- Dense Date Label Setup (like CloudView) ---
+        # --- Clean CloudView-like Date Axis (no duplicate graph, even spacing) ---
     unique_dates = sorted(df_floor[date_col].dt.date.unique())
     num_dates = len(unique_dates)
     
-    # Create tick positions for all unique dates
-    tickvals = unique_dates
-    ticktext = [d.strftime("%b %d, %Y") for d in unique_dates]
+    # Automatically set nice tick spacing (around 10–15 labels evenly spread)
+    tick_count = min(num_dates, 12)
+    tickvals = np.linspace(0, num_dates - 1, tick_count, dtype=int)
+    tick_dates = [unique_dates[i] for i in tickvals]
     
     fig.update_layout(
         xaxis_title="Date",
         yaxis_title="ave",
         height=480,
-        hovermode="closest",
+        hovermode="x unified",  # unified tooltip like CloudView
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -273,29 +274,33 @@ for kpi_norm in selected_kpis:
             x=1
         ),
         xaxis=dict(
-            tickformat="%b %d, %Y",
             tickmode="array",
-            tickvals=tickvals,
-            ticktext=ticktext,
+            tickvals=[unique_dates.index(d) for d in tick_dates],
+            ticktext=[d.strftime("%b %d, %Y") for d in tick_dates],
+            tickangle=-60,
             showgrid=True,
-            tickangle=-60,  # slanted but clean
-            tickfont=dict(size=9),
-            ticklabelstep=1,  # show all dates (no skipping)
+            tickfont=dict(size=10),
             automargin=True,
             fixedrange=False,
-            rangeslider=dict(visible=True),  # add interactive slider like CloudView
-            rangeselector=dict(
+            rangeslider=dict(visible=False),  # ❌ Remove bottom small duplicate graph
+            rangeselector=dict(               # ✅ Keep the top buttons
                 buttons=list([
                     dict(count=7, label="1W", step="day", stepmode="backward"),
                     dict(count=30, label="1M", step="day", stepmode="backward"),
                     dict(count=90, label="3M", step="day", stepmode="backward"),
                     dict(count=180, label="6M", step="day", stepmode="backward"),
+                    dict(count=365, label="1Y", step="day", stepmode="backward"),
                     dict(step="all")
-                ])
+                ]),
+                x=0.02,
+                xanchor="left",
+                y=1.15,
+                yanchor="top"
             )
         ),
-        margin=dict(l=40, r=30, t=40, b=100)  # space for long x-labels
+        margin=dict(l=40, r=30, t=60, b=90)
     )
+
 
 
 
@@ -354,6 +359,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
