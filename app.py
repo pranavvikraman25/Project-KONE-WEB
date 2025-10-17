@@ -353,8 +353,8 @@ for kpi_norm in selected_kpis:
         ),
         xaxis=dict(
             tickmode="array",
-            tickvals = pd.date_range(df_floor[date_col].min(), df_floor[date_col].max(), freq='7D')  # show every 7th day
-            ticktext = [d.strftime("%d-%b") for d in tickvals]
+            tickvals = pd.date_range(df_floor[date_col].min(), df_floor[date_col].max(), freq='7D'),  # show every 7th day
+            ticktext = [d.strftime("%d-%b") for d in tickvals],
             tickangle=-60,                # tilt labels like CloudView
             tickfont=dict(size=8, color="#444"),
             showgrid=True,
@@ -439,20 +439,3 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
