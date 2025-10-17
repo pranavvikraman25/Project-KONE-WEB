@@ -138,10 +138,17 @@ def ollama_summarize(text, model="llama3"):
     Includes built-in checks and detailed Streamlit feedback.
     """
     # Check if Ollama exists
-    ollama_path = shutil.which("ollama")
+    ollama_path = shutil.which("ollama")       
+# If not found, manually use common Windows installation path
     if not ollama_path:
-        st.warning("❌ Ollama not found on this system. Install from https://ollama.com/download.")
-        return None
+        possible_path = r"C:\Users\PRANAV VIKRAMAN\AppData\Local\Programs\Ollama\ollama.exe"
+        import os
+        if os.path.exists(possible_path):
+            ollama_path = possible_path
+        else:
+            st.warning("❌ Ollama not found. Please install from https://ollama.com/download and restart.")
+            return None
+
 
     # Check if Ollama service is active
     try:
@@ -424,6 +431,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
