@@ -281,6 +281,14 @@ for kpi_norm in selected_kpis:
     floors = sorted(df_kpi[floor_col].dropna().unique())
     for i, floor in enumerate(floors):
         df_floor = df_kpi[df_kpi[floor_col] == floor].sort_values(date_col)
+
+        # Ensure continuous date range even if no data
+        full_dates = pd.date_range(df_floor[date_col].min(), df_floor[date_col].max(), freq="D")
+        df_floor = df_floor.set_index(date_col).reindex(full_dates).rename_axis(date_col).reset_index()
+        
+        # Keep same column names for plotting
+        df_floor[ave_col] = df_floor[ave_col].interpolate(limit_direction="both")  # smooth missing values
+
         if df_floor.empty: continue
         color = color_cycle(i)
         thresh = KPI_THRESHOLDS.get(kpi_norm, (None, None))
@@ -345,8 +353,8 @@ for kpi_norm in selected_kpis:
         ),
         xaxis=dict(
             tickmode="array",
-            tickvals=[unique_dates[i] for i in range(num_dates)],  # show all dates
-            ticktext=[d.strftime("%d-%b") for d in unique_dates],  # e.g. 05-Jul
+            tickvals = pd.date_range(df_floor[date_col].min(), df_floor[date_col].max(), freq='7D')  # show every 7th day
+            ticktext = [d.strftime("%d-%b") for d in tickvals]
             tickangle=-60,                # tilt labels like CloudView
             tickfont=dict(size=8, color="#444"),
             showgrid=True,
@@ -431,6 +439,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
