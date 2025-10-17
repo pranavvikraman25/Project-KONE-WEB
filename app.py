@@ -252,20 +252,14 @@ for kpi_norm in selected_kpis:
             "rows": len(df_floor)
         })
 
-        # --- Clean CloudView-like Date Axis (no duplicate graph, even spacing) ---
     unique_dates = sorted(df_floor[date_col].dt.date.unique())
     num_dates = len(unique_dates)
-    
-    # Generate evenly spaced tick indices (like CloudView)
-    max_ticks = 10  # around 10–12 ticks max, auto-adjusts later
-    tick_positions = np.linspace(0, num_dates - 1, min(max_ticks, num_dates), dtype=int)
-    tick_dates = [unique_dates[i] for i in tick_positions]
     
     fig.update_layout(
         xaxis_title="Date",
         yaxis_title="ave",
-        height=480,
-        hovermode="x unified",  # unified hover line, still neat
+        height=500,
+        hovermode="closest",  # simple hover, no unified box
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -275,14 +269,19 @@ for kpi_norm in selected_kpis:
         ),
         xaxis=dict(
             tickmode="array",
-            tickvals=[unique_dates[i] for i in tick_positions],  # even date positions
-            ticktext=[d.strftime("%d %b %Y") for d in tick_dates],  # ex: 05 Aug 2025
-            tickangle=0,  # perfectly horizontal, like CloudView
-            tickfont=dict(size=11, color="#444"),
+            tickvals=[unique_dates[i] for i in range(num_dates)],  # show all dates
+            ticktext=[d.strftime("%d-%b") for d in unique_dates],  # e.g. 05-Jul
+            tickangle=-60,                # tilt labels like CloudView
+            tickfont=dict(size=8, color="#444"),
             showgrid=True,
             gridcolor="#E0E0E0",
             zeroline=False,
             fixedrange=False,
+            ticklabeloverflow="allow",    # prevent cutting off long labels
+            ticklabelstep=1,              # show every tick label
+            tickformat="%d-%b",
+            automargin=True,
+            rangeslider=dict(visible=False),  # ❌ remove duplicate mini chart
             rangeselector=dict(
                 buttons=list([
                     dict(count=7, label="1W", step="day", stepmode="backward"),
@@ -292,15 +291,13 @@ for kpi_norm in selected_kpis:
                     dict(count=365, label="1Y", step="day", stepmode="backward"),
                     dict(step="all")
                 ]),
-                x=0.02, xanchor="left", y=1.15, yanchor="top"
-            ),
-            rangeslider=dict(visible=False)  # ❌ No duplicate mini graph
+                x=0.02, xanchor="left", y=1.12, yanchor="top"
+            )
         ),
-        margin=dict(l=40, r=40, t=70, b=80),
+        margin=dict(l=50, r=40, t=70, b=120),
         plot_bgcolor="white",
         paper_bgcolor="white"
     )
-
 
 
     st.plotly_chart(fig, use_container_width=True)
@@ -358,6 +355,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
