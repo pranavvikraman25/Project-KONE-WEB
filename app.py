@@ -259,11 +259,14 @@ for kpi_norm in selected_kpis:
         hovermode="closest",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         xaxis=dict(
-            tickformat="%b %d, %Y",  # <-- show only date (e.g., Oct 2, 2025)
+            tickformat="%b %d, %Y",  # e.g. Jul 10, 2025
             showgrid=True,
-            tickangle=0,
+            tickangle=45,            # ← Rotate the labels 45° for better readability
             tickmode="auto",
-            nticks=len(df_floor[date_col].unique())  # keep natural spacing
+            tickfont=dict(size=10),
+            tickvals=df_floor[date_col].unique(),
+            ticktext=[d.strftime("%b %d, %Y") for d in df_floor[date_col].unique()]
+
         )
     )
 
@@ -322,6 +325,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
