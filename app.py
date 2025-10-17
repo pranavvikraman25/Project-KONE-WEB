@@ -252,38 +252,51 @@ for kpi_norm in selected_kpis:
             "rows": len(df_floor)
         })
 
-    # --- Dynamically adjust date tick density ---
+       # --- Dense Date Label Setup (like CloudView) ---
     unique_dates = sorted(df_floor[date_col].dt.date.unique())
     num_dates = len(unique_dates)
     
-    # Determine tick spacing
-    if num_dates <= 15:
-        tickstep = 1        # show every date
-    elif num_dates <= 40:
-        tickstep = 2        # show every 2nd date
-    elif num_dates <= 100:
-        tickstep = 4        # show every 4th date
-    else:
-        tickstep = max(1, num_dates // 50)  # keep at least ~50 visible ticks for large datasets
+    # Create tick positions for all unique dates
+    tickvals = unique_dates
+    ticktext = [d.strftime("%b %d, %Y") for d in unique_dates]
     
-    # --- Update layout ---
     fig.update_layout(
         xaxis_title="Date",
         yaxis_title="ave",
-        height=500,
+        height=480,
         hovermode="closest",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
         xaxis=dict(
-            tickformat="%b %d, %Y",  # e.g., Jul 17, 2025
-            tickangle=-60,            # slanted date labels
+            tickformat="%b %d, %Y",
             tickmode="array",
-            tickvals=[d for i, d in enumerate(unique_dates) if i % tickstep == 0],
-            ticktext=[d.strftime("%b %d, %Y") for i, d in enumerate(unique_dates) if i % tickstep == 0],
+            tickvals=tickvals,
+            ticktext=ticktext,
             showgrid=True,
-            tickfont=dict(size=10),
-            showticklabels=True
-        )
+            tickangle=45,  # slanted but clean
+            tickfont=dict(size=9),
+            ticklabelstep=1,  # show all dates (no skipping)
+            automargin=True,
+            fixedrange=False,
+            rangeslider=dict(visible=True),  # add interactive slider like CloudView
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=7, label="1W", step="day", stepmode="backward"),
+                    dict(count=30, label="1M", step="day", stepmode="backward"),
+                    dict(count=90, label="3M", step="day", stepmode="backward"),
+                    dict(count=180, label="6M", step="day", stepmode="backward"),
+                    dict(step="all")
+                ])
+            )
+        ),
+        margin=dict(l=40, r=30, t=40, b=100)  # space for long x-labels
     )
+
 
 
     st.plotly_chart(fig, use_container_width=True)
@@ -341,6 +354,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
