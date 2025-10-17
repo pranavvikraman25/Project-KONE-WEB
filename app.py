@@ -5,6 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 from io import BytesIO
 from datetime import date, timedelta
+import shutil
 import subprocess, shlex
 
 # ---------------- Page config ----------------
@@ -128,15 +129,47 @@ def df_to_excel_bytes(df_):
     out.seek(0)
     return out
 
-def ollama_summarize(text, model="mistral"):
+import shutil
+import subprocess, shlex
+
+def ollama_summarize(text, model="llama3"):
+    """
+    Summarize using local Ollama (Llama 3 model).
+    Includes built-in checks and detailed Streamlit feedback.
+    """
+    # Check if Ollama exists
+    ollama_path = shutil.which("ollama")
+    if not ollama_path:
+        st.warning("❌ Ollama not found on this system. Install from https://ollama.com/download.")
+        return None
+
+    # Check if Ollama service is active
     try:
-        cmd = f"ollama run {model} \"Summarize this maintenance report in 4 bullet points for a manager: {text}\""
-        proc = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=60)
-        if proc.returncode == 0:
-            return proc.stdout.strip()
-    except Exception:
-        pass
-    return None
+        test_proc = subprocess.run(["ollama", "ps"], capture_output=True, text=True, timeout=10)
+        if test_proc.returncode != 0:
+            st.warning("⚠️ Ollama service not running. Open terminal and run: `ollama serve`.")
+            return None
+    except Exception as e:
+        st.error(f"Ollama check failed: {e}")
+        return None
+
+    # Build the summarization command
+    prompt = f"Summarize this maintenance report in 4 bullet points for a manager:\n\n{text}"
+    cmd = f"ollama run {model} \"{prompt}\""
+
+    try:
+        proc = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=120)
+        if proc.returncode == 0 and proc.stdout.strip():
+            summary = proc.stdout.strip()
+            # Optional cleanup if Llama adds extra formatting
+            summary = summary.replace("•", "-").replace("–", "-").strip()
+            return summary
+        else:
+            st.warning(f"⚠️ Ollama returned no output. stderr: {proc.stderr}")
+            return None
+    except Exception as e:
+        st.error(f"Error running Ollama summarization: {e}")
+        return None
 
 # ---------------- Upload ----------------
 uploaded = st.file_uploader("Upload KPI file (xlsx/xls/csv/json)", type=["xlsx","xls","csv","json"])
@@ -391,6 +424,7 @@ else:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.caption("© 2025 KONE Internal Dashboard | Developed by PRANAV VIKRAMAN S S")
+
 
 
 
